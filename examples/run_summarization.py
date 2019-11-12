@@ -141,6 +141,7 @@ class BertSumOptimizer(object):
         }
 
         self._step = 0
+        self.current_learning_rates = {}
 
     def _update_rate(self, stack):
         return self.lr[stack] * min(
@@ -158,6 +159,7 @@ class BertSumOptimizer(object):
             for param_group in optimizer.param_groups:
                 param_group["lr"] = new_rate
             optimizer.step()
+            self.current_learning_rates[stack] = new_rate
 
 
 # ------------
@@ -198,7 +200,7 @@ def train(args, model, tokenizer):
         )
 
     # Prepare the optimizer
-    learning_rates = {"encoder": 0.002, "decoder": 0.2}
+    learning_rates = {"encoder": 0.002, "decoder": 0.1}
     warmup_steps = {"encoder": 20000, "decoder": 10000}
     optimizer = BertSumOptimizer(model, learning_rates, warmup_steps)
 
@@ -281,8 +283,8 @@ def train(args, model, tokenizer):
                     and args.logging_steps > 0
                     and global_step % args.logging_steps == 0
                 ):
-                    learning_rate_encoder = optimizer.lr["encoder"]
-                    learning_rate_decoder = optimizer.lr["decoder"]
+                    learning_rate_encoder = optimizer.current_learning_rates["encoder"]
+                    learning_rate_decoder = optimizer.current_learning_rates["decoder"]
                     tb_writer.add_scalar(
                         "learning_rate_encoder", learning_rate_encoder, global_step
                     )
