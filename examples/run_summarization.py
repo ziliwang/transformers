@@ -145,7 +145,7 @@ class BertSumOptimizer(object):
 
     def _update_rate(self, stack):
         return self.lr[stack] * min(
-            self._step ** (-0.5), self._step * self.warmup_steps[stack] ** (-0.5)
+            self._step ** (-0.5), self._step * self.warmup_steps[stack] ** (-1.5)
         )
 
     def zero_grad(self):
