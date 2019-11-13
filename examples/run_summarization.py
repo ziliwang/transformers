@@ -107,6 +107,27 @@ def collate(data, tokenizer, block_size):
 # Optimizers
 # ----------
 
+def get_BertAbs_model():
+    """ Initializes the BertAbs model for finetuning.
+    """
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+
+    decoder_config = BertConfig(
+        hidden_size=768,
+        num_hidden_layers=6,
+        num_attention_heads=8,
+        intermediate_size=2048,
+        hidden_dropout_prob=0.2,
+        attention_probs_dropout_prob=0.2,
+    )
+    decoder_model = BertForMaskedLM(decoder_config)
+
+    model = Model2Model.from_pretrained(
+        "bert-base-uncased", decoder_model=decoder_model
+    )
+
+    return tokenizer, model
+
 
 class BertSumOptimizer(object):
     """ Specific optimizer for BertSum.
@@ -539,22 +560,7 @@ def main():
     if args.is_distributed and not args.is_first_process:
         torch.distributed.barrier()
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, do_lower_case=True)
-
-    decoder_config = BertConfig.from_pretrained(args.model_name_or_path)
-    decoder_config = BertConfig(
-        hidden_size=768,
-        num_hidden_layers=6,
-        num_attention_heads=8,
-        intermediate_size=2048,
-        hidden_dropout_prob=0.2,
-        attention_probs_dropout_prob=0.2,
-    )
-    decoder_model = BertForMaskedLM(decoder_config)
-
-    model = Model2Model.from_pretrained(
-        args.model_name_or_path, decoder_model=decoder_model
-    )
+    tokenizer, model = get_BertAbs_model()
 
     # Following Lapata & Liu we share the encoder's word embedding weights with the decoder
     decoder_embeddings = copy.deepcopy(model.encoder.get_input_embeddings())
