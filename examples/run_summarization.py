@@ -103,9 +103,9 @@ def collate(data, tokenizer, block_size):
     )
 
 
-# ----------
-# Optimizers
-# ----------
+# -------------------------
+# BertAbs model & optimizer
+# -------------------------
 
 def get_BertAbs_model():
     """ Initializes the BertAbs model for finetuning.
@@ -182,6 +182,62 @@ class BertSumOptimizer(object):
             optimizer.step()
             self.current_learning_rates[stack] = new_rate
 
+
+# ----------
+# Evaluation
+# ----------
+
+# So I can evaluate during training
+def summarize(args, source, encoder_token_type_ids, encoder_mask, model, tokenizer):
+    """ Summarize a whole batch returned by the data loader.
+    """
+    source = source.to(args.device)
+    encoder_token_type_ids = encoder_token_type_ids.to(args.device)
+    encoder_mask = encoder_mask.to(args.device)
+
+    model_kwargs = {
+        "encoder_token_type_ids": encoder_token_type_ids,
+        "encoder_attention_mask": encoder_mask,
+    }
+
+    batch_size = source.size(0)
+    with torch.no_grad():
+        beam = BeamSearch(
+            model,
+            tokenizer.cls_token_id,
+            tokenizer.pad_token_id,
+            tokenizer.sep_token_id,
+            batch_size=batch_size,
+            beam_size=5,
+            min_length=15,
+            max_length=150,
+            alpha=0.9,
+            block_repeating_trigrams=True,
+        )
+
+        results = beam(source, **model_kwargs)
+
+    best_predictions_idx = [
+        max(enumerate(results["scores"][i]), key=lambda x: x[1])[0]
+        for i in range(batch_size)
+    ]
+    summaries_tokens = [
+        results["predictions"][b][idx]
+        for b, idx in zip(range(batch_size), best_predictions_idx)
+    ]
+
+    return summaries_tokens
+
+
+def decode_summary(summary_tokens, tokenizer):
+    """ Decode the summary and return it in a format
+    suitable for evaluation.
+    """
+    summary_tokens = summary_tokens.to("cpu").numpy()
+    summary = tokenizer.decode(summary_tokens)
+    sentences = summary.split(".")
+    sentences = [s + "." for s in sentences]
+    return sentences
 
 # ------------
 # Train
@@ -283,7 +339,6 @@ def train(args, model, tokenizer):
             )
             loss = outputs[0]
 
-            del source, target, encoder_token_type_ids, encoder_mask, decoder_mask, lm_labels
             torch.cuda.empty_cache()
 
             if args.n_gpu > 1:
@@ -304,6 +359,12 @@ def train(args, model, tokenizer):
                     and args.logging_steps > 0
                     and global_step % args.logging_steps == 0
                 ):
+                    if not args.is_distributed and args.evaluate_during_training:
+                        summaries_tokens = summarize(args, source, encoder_token_type_ids, encoder_mask, model, tokenizer) 
+                        sentences = decode_summary(summaries_tokens[0], tokenizer)
+                        sample_summary = " ".join(sentences)
+                        tb_writer.add_text("summary", sample_summary, global_step)
+                        tb_writer.add_text("article", tokenizer.decode(source.to("cpu").numpy()[0]), global_step)
                     learning_rate_encoder = optimizer.current_learning_rates["encoder"]
                     learning_rate_decoder = optimizer.current_learning_rates["decoder"]
                     tb_writer.add_scalar(
@@ -331,6 +392,8 @@ def train(args, model, tokenizer):
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
                 break
+
+            del source, target, encoder_token_type_ids, encoder_mask, decoder_mask, lm_labels
 
         if args.max_steps > 0 and global_step > args.max_steps:
             train_iterator.close()
@@ -368,54 +431,14 @@ def evaluate(args, model, tokenizer, path_to_summaries):
 
     idx_summary = 0
     for batch in tqdm(eval_dataloader, desc="Evaluating"):
-        source, target, encoder_token_type_ids, encoder_mask, _, _ = batch
-        source = source.to(args.device)
-        target = target.to(args.device)
-        encoder_token_type_ids = encoder_token_type_ids.to(args.device)
-        encoder_mask = encoder_mask.to(args.device)
-
-        model_kwargs = {
-            "encoder_token_type_ids": encoder_token_type_ids,
-            "encoder_attention_mask": encoder_mask,
-        }
-
-        with torch.no_grad():
-            beam = BeamSearch(
-                model,
-                tokenizer.cls_token_id,
-                tokenizer.pad_token_id,
-                tokenizer.sep_token_id,
-                batch_size=args.eval_batch_size,
-                beam_size=5,
-                min_length=15,
-                max_length=150,
-                alpha=0.9,
-                block_repeating_trigrams=True,
-            )
-
-            results = beam(source, **model_kwargs)
-
-            # keep the best prediction for each sequence
-            # blame the ugliness on python for not having an argmax() function
-            batch_size = args.eval_batch_size
-            best_predictions_idx = [
-                max(enumerate(results["scores"][i]), key=lambda x: x[1])[0]
-                for i in range(batch_size)
-            ]
-            summaries_tokens = [
-                results["predictions"][b][idx]
-                for b, idx in zip(range(batch_size), best_predictions_idx)
-            ]
-            for summary_tokens in summaries_tokens:
-                summary_tokens = summary_tokens.to("cpu").numpy()
-                summary = tokenizer.decode(summary_tokens)
-                sentences = summary.split(".")
-                sentences = [s + "." for s in sentences]
-
-                path = os.path.join(path_to_summaries, "model_{}.txt".format(idx_summary))
-                with open(path, "w") as output:
-                    output.write("\n".join(sentences))
-                idx_summary += 1
+        source, _, encoder_token_type_ids, encoder_mask, _, _ = batch
+        summaries_tokens = summarize(args, source, encoder_token_type_ids, encoder_mask, model, tokenizer)
+        for summary_tokens in summaries_tokens:
+            sentences = decode_summary(summary_tokens, tokenizer)
+            path = os.path.join(path_to_summaries, "model_{}.txt".format(idx_summary))
+            with open(path, "w") as output:
+                output.write("\n".join(sentences))
+            idx_summary += 1
 
 
 def save_model_checkpoints(args, model, tokenizer):
@@ -521,6 +544,12 @@ def main():
         type=int,
         default=-1,
         help="Argument passed by Pytorch's utility to manage distributed computation.",
+    )
+    parser.add_argument(
+        "--evaluate_during_training",
+        type=bool,
+        default=False,
+        help="Whether to run the evaluation during training.",
     )
     parser.add_argument("--seed", default=42, type=int)
     args = parser.parse_args()
