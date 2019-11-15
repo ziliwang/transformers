@@ -1,35 +1,54 @@
+from collections import namedtuple
+
 import torch
 import torch.nn.functional as F
 from tqdm import trange
 
 
+SamplerConfig = namedtuple("SamplerConfig", ["temperature", "k", "p", "repetition_penalty"])
+
+
+def sample(model, temperature=1.0, k=0, p=0, repetition_penalty=1.0):
+    """ Factory function that returns the appropriate sampler with regards
+    to the model passed as a parameter.
+
+    Only single stacks are currently supported.
+    """
+
+    MODEL_SAMPLERS = {
+        "XLNetLMHeadModel": SamplerForXLNet,
+        "XLMWithLMHeadModel": SamplerForXLM,
+    }
+
+    sampler_config = SamplerConfig(
+        temperature=temperature, k=k, p=p, repetition_penalty=repetition_penalty
+    )
+
+    model_name = model.__name__
+    sampler_for_model = MODEL_SAMPLERS.get(model_name, None)
+    if not sampler_for_model:
+        return SamplerSingleStack(model, sampler_config)
+
+    return sampler_for_model(model, sampler_config)
+
+
 class Sampler(object):
-    def __init__(self, temperature=1.0, k=0, p=0, repetition_penalty=1.0):
-        self.k = k
-        self.p = p
-        self.temperature = temperature
-        self.repetition_penalty = repetition_penalty
+    def __init__(self, model, config):
+        self.k = config.k
+        self.p = config.p
+        self.temperature = config.temperature
+        self.repetition_penalty = config.repetition_penalty
 
-        self.do_apply_temperature = True if temperature > 0 else False
-        self.do_apply_repetition_penalty = True if repetition_penalty > 1 else False
+        self.do_apply_temperature = True if config.temperature > 0 else False
+        self.do_apply_repetition_penalty = True if config.repetition_penalty > 1 else False
 
-    def generate(self, model, sequence_length=1.0, prompt=[]):
+        self.model = model
+
+    def generate_sequence(self, length=1, prompt=[], **model_kwargs):
         """ Generate a sequence of `length` tokens starting from the
         provided `prompt`.
         """
-        prompt = torch.tensor(prompt, dtype=torch.long, device=None)
-        generated_sequence = prompt
-        with torch.no_grad():
-            for _ in trange(sequence_length):
-                outputs = model(input_ids=generated_sequence)
-                next_token_logits = outputs[0][:, -1, :]
-                next_token_logits = self.apply_repetition_penalty(
-                    next_token_logits, generated_sequence
-                )
-                next_token = self.generate_one_token(next_token_logits)
-                generated_sequence = torch.cat((generated_sequence, next_token), dim=1)
-
-        return generated_sequence
+        raise NotImplementedError
 
     def generate_one_token(self, next_token_logits):
         logits = self.apply_temperature(next_token_logits)
@@ -109,13 +128,90 @@ class Sampler(object):
         return torch.argmax(logits, dim=-1).unsqueeze(-1)
 
 
-class SamplerForXLM(Sampler):
-    pass
+# -------------------------------------------------------------
+# Samplers for single stack models
+# Single stack models all have in common that they only require
+# one input sequence to the model during the forward pass.
+# -------------------------------------------------------------
 
 
-class SamplerForXLNet(Sampler):
-    pass
+class SamplerSingleStack(Sampler):
+    def __init__(self, model, config):
+        super(SamplerSingleStack, self).__init__(model, config)
+
+    def generate_sequence(self, length=1, prompt=[], **model_kwargs):
+        prompt = torch.tensor(prompt, dtype=torch.long, device=None)
+        generated_sequence = prompt
+        with torch.no_grad():
+            for _ in trange(length):
+                outputs = self.forward_pass(generated_sequence, **model_kwargs)
+                next_token_logits = outputs[0][:, -1, :]
+                next_token_logits = self.apply_repetition_penalty(
+                    next_token_logits, generated_sequence
+                )
+                next_token = self.generate_one_token(next_token_logits)
+                generated_sequence = torch.cat((generated_sequence, next_token), dim=1)
+
+        return generated_sequence
+
+    def forward_pass(self, input_ids, **model_kwargs):
+        return self.model(input_ids, **model_kwargs)
 
 
-class SamplerForEncoderDecoder(Sampler):
-    pass
+class SamplerForXLM(SamplerSingleStack):
+    def __init__(self, model, config):
+        super(SamplerForXLM, self).__init__(model, config)
+
+    def forward_pass(self, input_ids, **model_kwargs):
+        mask_token = model_kwargs.get("mask_token", None)
+        lang = model_kwargs.get("lang", None)
+        input_ids = self._add_dummy_token(input_ids, mask_token)
+        langs = self._create_langs(input_ids, lang)
+        outputs = self.model(input_ids=input_ids, langs=langs)
+        return outputs
+
+    @staticmethod
+    def _add_dummy_token(sequence, token_id):
+        if token_id:
+            return torch.cat(
+                (sequence, torch.full((1, 1), token_id, dtype=torch.long, device=None)),
+                dim=1,
+            )
+        return sequence
+
+    @staticmethod
+    def _create_langs(sequence, lang):
+        if lang:
+            return torch.tensor([lang] * sequence.shape[1], device=None).view(1, -1)
+        return sequence
+
+
+class SamplerForXLNet(SamplerSingleStack):
+    def __init__(self, model, config):
+        super(SamplerForXLNet, self).__init__(model, config)
+
+    def forward_pass(self, model, input_ids, **model_kwargs):
+        input_ids = self._add_dummy_token(input_ids)
+        attention_mask = self._create_attention_mask(input_ids)
+        target_mapping = self._create_target_mapping(input_ids)
+        return model(input_ids, perm_mask=attention_mask, langs=target_mapping)
+
+    @staticmethod
+    def _add_dummy_token(sequence):
+        return torch.cat((sequence, 0), dim=1)
+
+    @staticmethod
+    def _create_attention_mask(sequence):
+        mask = torch.zeros(
+            (1, sequence.shape[1], sequence.shape[1]), dtype=torch.float, device=None
+        )
+        mask[:, :, -1] = 1.0  # Previous tokens don't see last token
+        return mask
+
+    @staticmethod
+    def _create_target_mapping(sequence):
+        target_mapping = torch.zeros(
+            (1, 1, sequence.shape[1]), dtype=torch.float, device=None
+        )
+        target_mapping[0, 0, -1] = 1.0  # predict last token
+        return target_mapping
