@@ -8,14 +8,14 @@ from tqdm import trange
 SamplerConfig = namedtuple("SamplerConfig", ["temperature", "k", "p", "repetition_penalty"])
 
 
-def sample(model, temperature=1.0, k=0, p=0, repetition_penalty=1.0):
+def new_sampler(model, temperature=1.0, k=0, p=0, repetition_penalty=1.0):
     """ Factory function that returns the appropriate sampler with regards
     to the model passed as a parameter.
 
     Only single stacks are currently supported.
     """
 
-    MODEL_SAMPLERS = {
+    MATCH_MODEL_SAMPLER = {
         "XLNetLMHeadModel": SamplerForXLNet,
         "XLMWithLMHeadModel": SamplerForXLM,
     }
@@ -25,7 +25,7 @@ def sample(model, temperature=1.0, k=0, p=0, repetition_penalty=1.0):
     )
 
     model_name = model.__name__
-    sampler_for_model = MODEL_SAMPLERS.get(model_name, None)
+    sampler_for_model = MATCH_MODEL_SAMPLER.get(model_name, None)
     if not sampler_for_model:
         return SamplerSingleStack(model, sampler_config)
 
@@ -43,6 +43,7 @@ class Sampler(object):
         self.do_apply_repetition_penalty = True if config.repetition_penalty > 1 else False
 
         self.model = model
+        self.device = next(model.parameters()).device  # only works if all parameters of the model are stored on a single GPU
 
     def generate_sequence(self, length=1, prompt=[], **model_kwargs):
         """ Generate a sequence of `length` tokens starting from the
@@ -140,7 +141,7 @@ class SamplerSingleStack(Sampler):
         super(SamplerSingleStack, self).__init__(model, config)
 
     def generate_sequence(self, length=1, prompt=[], **model_kwargs):
-        prompt = torch.tensor(prompt, dtype=torch.long, device=None)
+        prompt = torch.tensor(prompt, dtype=torch.long, device=self.device)
         generated_sequence = prompt
         with torch.no_grad():
             for _ in trange(length):
@@ -170,19 +171,17 @@ class SamplerForXLM(SamplerSingleStack):
         outputs = self.model(input_ids=input_ids, langs=langs)
         return outputs
 
-    @staticmethod
-    def _add_dummy_token(sequence, token_id):
+    def _add_dummy_token(self, sequence, token_id):
         if token_id:
             return torch.cat(
-                (sequence, torch.full((1, 1), token_id, dtype=torch.long, device=None)),
+                (sequence, torch.full((1, 1), token_id, dtype=torch.long, device=self.device)),
                 dim=1,
             )
         return sequence
 
-    @staticmethod
-    def _create_langs(sequence, lang):
+    def _create_langs(self, sequence, lang):
         if lang:
-            return torch.tensor([lang] * sequence.shape[1], device=None).view(1, -1)
+            return torch.tensor([lang] * sequence.shape[1], device=self.device).view(1, -1)
         return sequence
 
 
@@ -200,18 +199,16 @@ class SamplerForXLNet(SamplerSingleStack):
     def _add_dummy_token(sequence):
         return torch.cat((sequence, 0), dim=1)
 
-    @staticmethod
-    def _create_attention_mask(sequence):
+    def _create_attention_mask(self, sequence):
         mask = torch.zeros(
-            (1, sequence.shape[1], sequence.shape[1]), dtype=torch.float, device=None
+            (1, sequence.shape[1], sequence.shape[1]), dtype=torch.float, device=self.device
         )
         mask[:, :, -1] = 1.0  # Previous tokens don't see last token
         return mask
 
-    @staticmethod
-    def _create_target_mapping(sequence):
+    def _create_target_mapping(self, sequence):
         target_mapping = torch.zeros(
-            (1, 1, sequence.shape[1]), dtype=torch.float, device=None
+            (1, 1, sequence.shape[1]), dtype=torch.float, device=self.device
         )
         target_mapping[0, 0, -1] = 1.0  # predict last token
         return target_mapping
