@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from collections import namedtuple
 
 import torch
@@ -24,15 +25,14 @@ def new_sampler(model, temperature=1.0, k=0, p=0, repetition_penalty=1.0):
         temperature=temperature, k=k, p=p, repetition_penalty=repetition_penalty
     )
 
-    model_name = model.__name__
-    sampler_for_model = MATCH_MODEL_SAMPLER.get(model_name, None)
+    sampler = MATCH_MODEL_SAMPLER.get(model.__name__, None)
     if not sampler_for_model:
-        return SamplerSingleStack(model, sampler_config)
+        return sampler = SamplerSingleStack
 
-    return sampler_for_model(model, sampler_config)
+    return sampler(model, sampler_config)
 
 
-class Sampler(object):
+class Sampler(ABC):
     def __init__(self, model, config):
         self.k = config.k
         self.p = config.p
@@ -44,12 +44,13 @@ class Sampler(object):
 
         self.model = model
         self.device = next(model.parameters()).device  # only works if all parameters of the model are stored on a single GPU
-
+        
+    @abstractmethod
     def generate_sequence(self, length=1, prompt=[], **model_kwargs):
         """ Generate a sequence of `length` tokens starting from the
         provided `prompt`.
         """
-        raise NotImplementedError
+        pass
 
     def generate_one_token(self, next_token_logits):
         logits = self.apply_temperature(next_token_logits)
@@ -94,7 +95,6 @@ class Sampler(object):
         if self.k > 0:
             indices_to_remove = logits < torch.topk(logits, self.k)[0][..., -1, None]
             logits[indices_to_remove] = -float("Inf")
-
         return logits
 
     def apply_nucleus_filter(self, logits):
@@ -131,8 +131,6 @@ class Sampler(object):
 
 # -------------------------------------------------------------
 # Samplers for single stack models
-# Single stack models all have in common that they only require
-# one input sequence to the model during the forward pass.
 # -------------------------------------------------------------
 
 
