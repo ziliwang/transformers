@@ -8,7 +8,7 @@ from tqdm import trange
 SamplerConfig = namedtuple("SamplerConfig", ["temperature", "k", "p", "repetition_penalty"])
 
 
-def new_sampler(model, temperature=1.0, k=0, p=0, repetition_penalty=1.0):
+def new_sampler(model, temperature=1.0, k=0, p=0, repetition_penalty=1.0, device=torch.device("cpu")):
     """ Factory function that returns the appropriate sampler with regards
     to the model passed as a parameter.
 
@@ -24,15 +24,15 @@ def new_sampler(model, temperature=1.0, k=0, p=0, repetition_penalty=1.0):
         temperature=temperature, k=k, p=p, repetition_penalty=repetition_penalty
     )
 
-    sampler = MATCH_MODEL_SAMPLER.get(model.__name__, None)
+    sampler = MATCH_MODEL_SAMPLER.get(model.__class__.__name__, None)
     if not sampler:
         sampler = SamplerSingleStack
 
-    return sampler(model, sampler_config)
+    return sampler(model, sampler_config, device)
 
 
 class Sampler(object):
-    def __init__(self, model, config):
+    def __init__(self, model, config, device):
         self.k = config.k
         self.p = config.p
         self.temperature = config.temperature
@@ -42,7 +42,7 @@ class Sampler(object):
         self.do_apply_repetition_penalty = True if config.repetition_penalty > 1 else False
 
         self.model = model
-        self.device = next(model.parameters()).device  # only works if all parameters of the model are stored on a single GPU
+        self.device = device
 
     def generate_sequence(self, length=1, prompt=[], **model_kwargs):
         """ Generate a sequence of `length` tokens starting from the
@@ -133,8 +133,8 @@ class Sampler(object):
 
 
 class SamplerSingleStack(Sampler):
-    def __init__(self, model, config):
-        super(SamplerSingleStack, self).__init__(model, config)
+    def __init__(self, model, config, device):
+        super(SamplerSingleStack, self).__init__(model, config, device)
 
     def generate_sequence(self, length=1, prompt=[], **model_kwargs):
         prompt = torch.tensor(prompt, dtype=torch.long, device=self.device)
@@ -156,8 +156,8 @@ class SamplerSingleStack(Sampler):
 
 
 class SamplerForXLM(SamplerSingleStack):
-    def __init__(self, model, config):
-        super(SamplerForXLM, self).__init__(model, config)
+    def __init__(self, model, config, device):
+        super(SamplerForXLM, self).__init__(model, config, device)
 
     def forward_pass(self, input_ids, **model_kwargs):
         mask_token = model_kwargs.get("mask_token", None)
@@ -182,8 +182,8 @@ class SamplerForXLM(SamplerSingleStack):
 
 
 class SamplerForXLNet(SamplerSingleStack):
-    def __init__(self, model, config):
-        super(SamplerForXLNet, self).__init__(model, config)
+    def __init__(self, model, config, device):
+        super(SamplerForXLNet, self).__init__(model, config, device)
 
     def forward_pass(self, model, input_ids, **model_kwargs):
         input_ids = self._add_dummy_token(input_ids)
