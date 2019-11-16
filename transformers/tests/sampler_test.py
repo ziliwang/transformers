@@ -40,5 +40,30 @@ class SamplerFactoryTest(unittest.TestCase):
         self.assertIsInstance(sampler, SamplerSingleStack)
 
 
+class SamplerSingleStackTest(unittest.TestCase):
+    class ModelStub(object):
+        def __init__(self, batch_size=1):
+            self.batch_size = batch_size
+
+        def __call__(self, _):
+            return (0.5 * torch.ones((self.batch_size, 2, 5)),)
+
+    def test_output_length_no_prompt_batch_size_1(self):
+        expected_length = 5
+        model = self.ModelStub()
+        sampler = generate.new_sampler(model)
+        output = sampler.generate_sequence(length=expected_length)
+        self.assertEqual(output.size(), (1, expected_length))
+
+    def test_output_length_with_prompt_batch_size_1(self):
+        prompt = [1, 2]
+        generated_length = 5
+        expected_length = 7
+        model = self.ModelStub()
+        sampler = generate.new_sampler(model)
+        output = sampler.generate_sequence(length=generated_length, prompt=prompt)
+        self.assertEqual(output.size(), (1, expected_length))
+
+
 if __name__ == "__main__":
     unittest.main()
