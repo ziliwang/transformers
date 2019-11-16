@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from collections import namedtuple
 
 import torch
@@ -26,13 +25,13 @@ def new_sampler(model, temperature=1.0, k=0, p=0, repetition_penalty=1.0):
     )
 
     sampler = MATCH_MODEL_SAMPLER.get(model.__name__, None)
-    if not sampler_for_model:
-        return sampler = SamplerSingleStack
+    if not sampler:
+        sampler = SamplerSingleStack
 
     return sampler(model, sampler_config)
 
 
-class Sampler(ABC):
+class Sampler(object):
     def __init__(self, model, config):
         self.k = config.k
         self.p = config.p
@@ -44,13 +43,12 @@ class Sampler(ABC):
 
         self.model = model
         self.device = next(model.parameters()).device  # only works if all parameters of the model are stored on a single GPU
-        
-    @abstractmethod
+
     def generate_sequence(self, length=1, prompt=[], **model_kwargs):
         """ Generate a sequence of `length` tokens starting from the
         provided `prompt`.
         """
-        pass
+        raise NotImplementedError
 
     def generate_one_token(self, next_token_logits):
         logits = self.apply_temperature(next_token_logits)
