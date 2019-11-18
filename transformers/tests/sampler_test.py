@@ -53,7 +53,7 @@ class SamplerSingleStackTest(unittest.TestCase):
         model = self.ModelStub()
         sampler = generate.new_sampler(model)
         output = sampler.generate_sequence(length=expected_length)
-        self.assertEqual(output.size(), (1, expected_length))
+        self.assertEqual(len(output), expected_length)
 
     def test_output_length_with_prompt_batch_size_1(self):
         prompt = [1, 2]
@@ -62,7 +62,7 @@ class SamplerSingleStackTest(unittest.TestCase):
         model = self.ModelStub()
         sampler = generate.new_sampler(model)
         output = sampler.generate_sequence(length=generated_length, prompt=prompt)
-        self.assertEqual(output.size(), (1, expected_length))
+        self.assertEqual(len(output), expected_length)
 
 
 if __name__ == "__main__":

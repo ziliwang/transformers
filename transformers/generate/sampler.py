@@ -65,7 +65,7 @@ class Sampler(object):
            arXiv:1909.05858 (2019).
         """
         if self.do_apply_repetition_penalty:
-            generated_token_idx = set(generated_sequence.to_list())
+            generated_token_idx = set(generated_sequence.tolist())
             for token_idx in generated_token_idx:
                 logits[token_idx] /= self.repetition_penalty
         return logits
@@ -149,7 +149,7 @@ class SamplerSingleStack(Sampler):
                 next_token = self.generate_one_token(next_token_logits)
                 generated_sequence = torch.cat((generated_sequence, next_token), dim=1)
 
-        return generated_sequence
+        return generated_sequence.squeeze(0).tolist()
 
     def forward_pass(self, input_ids, **model_kwargs):
         return self.model(input_ids, **model_kwargs)
