@@ -237,8 +237,12 @@ def main():
     set_seed(args)
 
     # Initialize the model and tokenizer
-    args.model_type = args.model_type.lower()
-    model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+    try:
+        args.model_type = args.model_type.lower()
+        model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+    except KeyError as ke:
+        raise ke("the model {} you specified is not supported. You are welcome to add it and open a PR :)")
+
     tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
     model = model_class.from_pretrained(args.model_name_or_path)
     model.to(args.device)
