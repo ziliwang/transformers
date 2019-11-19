@@ -115,25 +115,23 @@ def prepare_ctrl_input(args, _, tokenizer, prompt_text):
 
 
 def prepare_xlm_input(args, model, tokenizer, prompt_text):
-    kwargs = {"langs": None, "mask_token": None}
+    kwargs = {"language": None, "mask_token": None}
 
     # Set the language
-    if (
-        hasattr(tokenizer, "lang2id")
-        and hasattr(model.config, "use_lang_emb")
-        and model.config.use_lang_emb
-    ):
-        if args.xlm_lang:
-            language = args.xlm_lang
+    use_lang_emb = hasattr(model.config, "use_lang_emb") and model.config.use_lang_emb
+    if hasattr(tokenizer, "lang2id") and use_lang_emb:
+        available_languages = tokenizer.lang2id.keys()
+        if args.xlm_language in available_languages:
+            language = args.xlm_language
         else:
             language = None
-            while language not in tokenizer.lang2id.keys():
+            while language not in available_languages:
                 language = input(
                     "Using XLM. Select language in "
-                    + str(list(tokenizer.lang2id.keys()))
+                    + str(list(available_languages))
                     + " >>> "
                 )
-        kwargs["langs"] = tokenizer.lang2id[language]
+        kwargs["language"] = tokenizer.lang2id[language]
 
     # XLM masked-language modeling (MLM) models need masked token
     is_xlm_mlm = "mlm" in args.model_name_or_path
@@ -207,7 +205,7 @@ def main():
     parser.add_argument("--p", type=float, default=0.9)
     parser.add_argument("--padding_text", type=str, default="")
     parser.add_argument(
-        "--xlm_lang",
+        "--xlm_language",
         type=str,
         default="",
         help="Optional language when used with the XLM model.",
@@ -258,7 +256,7 @@ def main():
     requires_preprocessing = args.model_type in PREPROCESSING_FUNCTIONS.keys()
     model_kwargs = {}
     if requires_preprocessing:
-        prepare_input = PREPROCESSING_FUNCTIONS.get[args.model_type]
+        prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
         prompt_text, model_kwargs = prepare_input(args, model, tokenizer, prompt_text)
     encoded_prompt = tokenizer.encode(prompt_text, add_special_tokens=False)
 
@@ -274,7 +272,9 @@ def main():
     output_sequences = sampler.generate_sequence(
         length=args.length, prompt=encoded_prompt, **model_kwargs
     )
-    generated_sequence = output_sequences[len(encoded_prompt):]  # adapted to case where num_samples > 1
+    generated_sequence = output_sequences[
+        len(encoded_prompt) :
+    ]  # adapted to case where num_samples > 1
     text = tokenizer.decode(generated_sequence, clean_up_tokenization_spaces=True)
     text = text[: text.find(args.stop_token) if args.stop_token else None]
 

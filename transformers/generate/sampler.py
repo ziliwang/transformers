@@ -179,10 +179,10 @@ class SamplerForXLM(SamplerSingleStack):
 
     def forward_pass(self, input_ids, **model_kwargs):
         mask_token = model_kwargs.pop("mask_token", None)
-        lang = model_kwargs.pop("lang", None)
+        language = model_kwargs.pop("language", None)
         input_ids = self._add_dummy_token(input_ids, mask_token)
-        langs = self._create_langs(input_ids, lang)
-        outputs = self.model(input_ids, langs=langs)
+        language_embeddings = self._create_language_embeddings(input_ids, language)
+        outputs = self.model(input_ids, langs=language_embeddings)
         return outputs
 
     def _add_dummy_token(self, sequence, token_id):
@@ -196,10 +196,10 @@ class SamplerForXLM(SamplerSingleStack):
             )
         return sequence
 
-    def _create_langs(self, sequence, lang):
-        if lang:
-            return torch.tensor([lang] * sequence.shape[1], device=self.device).view(1, -1)
-        return sequence
+    def _create_language_embeddings(self, sequence, language):
+        if language:
+            return torch.tensor([language] * sequence.shape[1], device=self.device).view(1, -1)
+        return None
 
 
 class SamplerForXLNet(SamplerSingleStack):
