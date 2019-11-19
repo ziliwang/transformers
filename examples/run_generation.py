@@ -140,20 +140,17 @@ def prepare_xlm_input(args, model, tokenizer, prompt_text):
     if is_xlm_mlm:
         kwargs["mask_token"] = tokenizer.mask_token_id
 
-    encoded_prompt = tokenizer.encode(prompt_text, add_special_tokens=False)
-    return encoded_prompt, kwargs
+    return prompt_text, kwargs
 
 
 def prepare_xlnet_input(args, _, tokenizer, prompt_text):
     prompt_text = (args.padding_text if args.padding_text else PADDING_TEXT) + prompt_text
-    encoded_prompt = tokenizer.encode(prompt_text, add_special_tokens=False)
-    return encoded_prompt, {}
+    return prompt_text, {}
 
 
 def prepare_transfoxl_input(args, _, tokenizer, prompt_text):
     prompt_text = (args.padding_text if args.padding_text else PADDING_TEXT) + prompt_text
-    encoded_prompt = tokenizer.encode(prompt_text, add_special_tokens=False)
-    return encoded_prompt, {}
+    return prompt_text, {}
 
 
 PREPROCESSING_FUNCTIONS = {
@@ -258,12 +255,11 @@ def main():
 
     # Prepare the sampler's input depending on the model
     requires_preprocessing = args.model_type in PREPROCESSING_FUNCTIONS.keys()
+    model_kwargs = {}
     if requires_preprocessing:
-        preprocessing_fn = PREPROCESSING_FUNCTIONS.get[args.model_type]
-        encoded_prompt, model_kwargs = preprocessing_fn(args, model, tokenizer, prompt_text)
-    else:
-        encoded_prompt = tokenizer.encode(prompt_text, add_special_tokens=False)
-        model_kwargs = {}
+        prepare_input = PREPROCESSING_FUNCTIONS.get[args.model_type]
+        prompt_text, model_kwargs = prepare_input(args, model, tokenizer, prompt_text)
+    encoded_prompt = tokenizer.encode(prompt_text, add_special_tokens=False)
 
     sampler = generate.new_sampler(
         model=model,
