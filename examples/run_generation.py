@@ -238,7 +238,9 @@ def main():
         args.model_type = args.model_type.lower()
         model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     except KeyError as ke:
-        raise ke("the model {} you specified is not supported. You are welcome to add it and open a PR :)")
+        raise ke(
+            "the model {} you specified is not supported. You are welcome to add it and open a PR :)"
+        )
 
     tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
     model = model_class.from_pretrained(args.model_name_or_path)
@@ -246,8 +248,7 @@ def main():
     model.eval()
 
     args.length = adjust_length_to_model(
-        args.length,
-        max_sequence_length=model.config.max_position_embeddings,
+        args.length, max_sequence_length=model.config.max_position_embeddings
     )
     logger.info(args)
 
@@ -270,15 +271,14 @@ def main():
         device=args.device,
     )
 
-    output_sequences = sampler.generate_sequence(encoded_prompt, **model_kwargs)
-    generated_sequences = output_sequences[
-        :, len(encoded_prompt) :
-    ]  # adapted to case where num_samples > 1
-    for sequence in generated_sequences:
-        text = tokenizer.decode(sequence, clean_up_tokenization_spaces=True)
-        text = text[: text.find(args.stop_token) if args.stop_token else None]
-        print(text)
+    output_sequences = sampler.generate_sequence(
+        length=args.length, prompt=encoded_prompt, **model_kwargs
+    )
+    generated_sequence = output_sequences[len(encoded_prompt):]  # adapted to case where num_samples > 1
+    text = tokenizer.decode(generated_sequence, clean_up_tokenization_spaces=True)
+    text = text[: text.find(args.stop_token) if args.stop_token else None]
 
+    print(text)
     return text
 
 
