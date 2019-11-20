@@ -34,6 +34,18 @@ def new_sampler(
 
 
 class Sampler(object):
+    r""" Sampler is used to generate sequences of ids from logit inputs.
+
+    Attributes:
+        **config**: ``SamplerConfig``
+            Configuration of the sampler which includes the following variables
+                - k: parameter for the top-k filtering
+                - p: parameter for the nucleus filtering
+                - temperature: parameter used to modulate the distribution over ids
+                - repetition_penalty: the penalty that repeating ids incur
+        **device**: ``torch.device``
+            Device on which the computations will be run.
+    """
     def __init__(self, config, device):
         self.k = config.k
         self.p = config.p
@@ -52,9 +64,9 @@ class Sampler(object):
 
         self.device = device
 
-    def generate_sequence(self, length=1, prompt=[]):
+    def generate_sequence(self):
         """ Generate a sequence of `length` tokens starting from the
-        provided `prompt`.
+        provided `prompt`. This method is model-specific.
         """
         raise NotImplementedError
 
@@ -152,6 +164,8 @@ class Sampler(object):
 
 
 class SamplerSingleStack(Sampler):
+    """ Generic sampler for single-stack models.
+    """
     def __init__(self, model, config, device):
         self.model = model
         super(SamplerSingleStack, self).__init__(config, device)
@@ -173,6 +187,11 @@ class SamplerSingleStack(Sampler):
 
 
 class SamplerForXLM(SamplerSingleStack):
+    """ Sampler for the XLM model.
+
+    The XLM model requires to add mask tokens at the end of the input sequence
+    and pass language embeddings when doing the forward pass.
+    """
     def __init__(self, model, config, device):
         super(SamplerForXLM, self).__init__(model, config, device)
 
@@ -205,6 +224,11 @@ class SamplerForXLM(SamplerSingleStack):
 
 
 class SamplerForXLNet(SamplerSingleStack):
+    """ Sampler for the XLNet model.
+
+    The XLNet model requires to add a dummy token to the input, compute an
+    attention mask and a target mapping from the input before the forward pass.
+    """
     def __init__(self, model, config, device):
         super(SamplerForXLNet, self).__init__(model, config, device)
 
