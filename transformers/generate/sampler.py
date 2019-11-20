@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 from tqdm import trange
 
-
 SamplerConfig = namedtuple("SamplerConfig", ["temperature", "k", "p", "repetition_penalty"])
 
 
@@ -163,9 +162,9 @@ class SamplerSingleStack(Sampler):
         with torch.no_grad():
             for _ in trange(length):
                 outputs = self.forward_pass(generated_sequence, **model_kwargs)
-                next_token_logits = outputs[0][:, -1, :]
-                next_token = self.generate_one_token(next_token_logits, generated_sequence)
-                generated_sequence = torch.cat((generated_sequence, next_token), dim=1)
+                next_tokens_logits = outputs[0][:, -1, :]
+                next_tokens = self.generate_one_token(next_tokens_logits, generated_sequence)
+                generated_sequence = torch.cat((generated_sequence, next_tokens), dim=1)
 
         return generated_sequence.squeeze(0).tolist()
 
@@ -180,17 +179,20 @@ class SamplerForXLM(SamplerSingleStack):
     def forward_pass(self, input_ids, **model_kwargs):
         mask_token = model_kwargs.pop("mask_token", None)
         language = model_kwargs.pop("language", None)
-        input_ids = self._add_dummy_token(input_ids, mask_token)
+        input_ids = self._add_mask_token(input_ids, mask_token)
         language_embeddings = self._create_language_embeddings(input_ids, language)
         outputs = self.model(input_ids, langs=language_embeddings)
         return outputs
 
-    def _add_dummy_token(self, sequence, token_id):
-        if token_id:
+    def _add_mask_token(self, sequence, mask_token_id):
+        """ Append a [MASK] token at the end of the sequence that the MLM model
+        is going to try to predict.
+        """
+        if mask_token_id:
             return torch.cat(
                 (
                     sequence,
-                    torch.full((1, 1), token_id, dtype=torch.long, device=self.device),
+                    torch.full((1, 1), mask_token_id, dtype=torch.long, device=self.device),
                 ),
                 dim=1,
             )
@@ -215,19 +217,19 @@ class SamplerForXLNet(SamplerSingleStack):
         )
 
     def _add_dummy_token(self, sequence):
-        dummy = torch.zeros((1, 1), dtype=torch.long, device=self.device)
+        dummy = torch.zeros((sequence.shape[0], 1), dtype=torch.long, device=self.device)
         return torch.cat((sequence, dummy), dim=1)
 
     def _create_attention_mask(self, sequence):
         mask = torch.zeros(
-            (1, sequence.shape[1], sequence.shape[1]), dtype=torch.float, device=self.device
+            (sequence.shape[0], sequence.shape[1], sequence.shape[1]), dtype=torch.float, device=self.device
         )
         mask[:, :, -1] = 1.0  # Previous tokens don't see last token
         return mask
 
     def _create_target_mapping(self, sequence):
         target_mapping = torch.zeros(
-            (1, 1, sequence.shape[1]), dtype=torch.float, device=self.device
+            (sequence.shape[0], 1, sequence.shape[1]), dtype=torch.float, device=self.device
         )
         target_mapping[0, 0, -1] = 1.0  # predict last token
         return target_mapping
