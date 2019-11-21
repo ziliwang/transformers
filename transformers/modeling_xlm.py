@@ -664,10 +664,9 @@ class XLMWithLMHeadModel(XLMPreTrainedModel):
     def _prepare_inputs_for_decoding(self, input_ids, **model_kwargs):
         mask_token = model_kwargs.pop("mask_token", None)
         language = model_kwargs.pop("language", None)
-        arguments = {
-            "input_ids": self._append_mask_token(input_ids, mask_token),
-            "langs": self._create_language_embeddings(input_ids, language),
-        }
+        input_ids = self._append_mask_token(input_ids, mask_token),
+        langs = self._create_language_embeddings(input_ids, language),
+        arguments = {"input_ids": input_ids, "langs": langs}
         arguments.update(model_kwargs)
         return arguments
 

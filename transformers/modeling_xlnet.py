@@ -971,10 +971,13 @@ class XLNetLMHeadModel(XLNetPreTrainedModel):
         return self(**model_inputs)
 
     def _prepare_inputs_for_decoding(self, input_ids, **model_kwargs):
+        input_ids = self._add_dummy_token(input_ids)
+        perm_mask = self._create_perm_mask(input_ids)
+        target_mapping = self._create_target_mapping(input_ids)
         arguments = {
-            "input_ids": self._add_dummy_token(input_ids),
-            "perm_mask": self._create_perm_mask(input_ids),
-            "target_mapping": self._create_target_mapping(input_ids),
+            "input_ids": input_ids,
+            "perm_mask": perm_mask,
+            "target_mapping": target_mapping,
         }
         return arguments
 
