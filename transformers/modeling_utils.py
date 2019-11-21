@@ -96,7 +96,9 @@ class PreTrainedModel(nn.Module):
         # return self.decoder(**decoder_arguments)
 
     def _prepare_input_for_decoding(self, input_ids, **kwargs):
-        return {"input_ids": input_ids, **kwargs}
+        arguments = {"input_ids": input_ids}
+        arguments.update(kwargs)
+        return arguments
 
     def get_input_embeddings(self):
         """ Get model's input embeddings
