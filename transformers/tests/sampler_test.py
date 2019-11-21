@@ -17,12 +17,11 @@ if is_torch_available():
         XLMWithLMHeadModel,
         XLNetConfig,
         XLNetLMHeadModel,
+        PreTrainedEncoderDecoder,
     )
     from transformers.generate.sampler import (
         SamplerConfig,
         Sampler,
-        SamplerForXLM,
-        SamplerForXLNet,
         SamplerSingleStack,
     )
 else:
@@ -36,13 +35,13 @@ class SamplerFactoryTest(unittest.TestCase):
         model_config = XLMConfig()
         model = XLMWithLMHeadModel(model_config)
         sampler = generate.new_sampler(model)
-        self.assertIsInstance(sampler, SamplerForXLM)
+        self.assertIsInstance(sampler, SamplerSingleStack)
 
     def test_creation_of_xlnet_sampler(self):
         model_config = XLNetConfig()
         model = XLNetLMHeadModel(model_config)
         sampler = generate.new_sampler(model)
-        self.assertIsInstance(sampler, SamplerForXLNet)
+        self.assertIsInstance(sampler, SamplerSingleStack)
 
     def test_creation_of_single_stack_model(self):
         model = self.ModelStub()
@@ -89,6 +88,9 @@ class SamplerSingleStackTest(unittest.TestCase):
         def __init__(self, batch_size=1, vocabulary_size=5):
             self.batch_size = batch_size
             self.vocabulary_size = vocabulary_size
+
+        def decode(self, _):
+            return self(_)
 
         def __call__(self, _):
             return (0.5 * torch.ones((self.batch_size, 2, self.vocabulary_size)),)

@@ -87,6 +87,17 @@ class PreTrainedModel(nn.Module):
     def base_model(self):
         return getattr(self, self.base_model_prefix, self)
 
+    def decode(self, input_ids, **model_kwargs):
+        """ Decode the input sequence; preprocess the input before
+        the forward pass if necessary.
+        """
+        raise NotImplementedError("Only models with LM heads can be used as decoders")
+        # decoder_arguments = self._prepare_arguments_for_decoding(input_ids, **model_kwargs)
+        # return self.decoder(**decoder_arguments)
+
+    def _prepare_input_for_decoding(self, input_ids, **kwargs):
+        return {"input_ids": input_ids, **kwargs}
+
     def get_input_embeddings(self):
         """ Get model's input embeddings
         """
