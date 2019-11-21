@@ -150,11 +150,6 @@ class Sampler(object):
         return torch.argmax(logits, dim=-1).unsqueeze(-1)
 
 
-# -------------------------------------------------------------
-# Samplers for single stack models
-# -------------------------------------------------------------
-
-
 class SamplerSingleStack(Sampler):
     """ Generic sampler for single-stack models.
     """
@@ -176,82 +171,3 @@ class SamplerSingleStack(Sampler):
                 generated_sequence = torch.cat((generated_sequence, next_tokens), dim=1)
 
         return generated_sequence.squeeze(0).tolist()
-
-
-# class SamplerForXLM(SamplerSingleStack):
-    # """ Sampler for the XLM model.
-
-    # The XLM model requires to add mask tokens at the end of the input sequence
-    # and pass language embeddings when doing the forward pass.
-    # """
-
-    # def __init__(self, model, config, device):
-        # super(SamplerForXLM, self).__init__(model, config, device)
-
-    # def forward_pass(self, input_ids, **model_kwargs):
-        # mask_token = model_kwargs.pop("mask_token", None)
-        # language = model_kwargs.pop("language", None)
-        # input_ids = self._add_mask_token(input_ids, mask_token)
-        # language_embeddings = self._create_language_embeddings(input_ids, language)
-        # outputs = self.model(input_ids, langs=language_embeddings)
-        # return outputs
-
-    # def _add_mask_token(self, sequence, mask_token_id):
-        # """ Append a [MASK] token at the end of the sequence that the MLM model
-        # is going to try to predict.
-        # """
-        # if mask_token_id:
-            # return torch.cat(
-                # (
-                    # sequence,
-                    # torch.full((1, 1), mask_token_id, dtype=torch.long, device=self.device),
-                # ),
-                # dim=1,
-            # )
-        # return sequence
-
-    # def _create_language_embeddings(self, sequence, language):
-        # if language:
-            # return torch.tensor([language] * sequence.shape[1], device=self.device).view(
-                # 1, -1
-            # )
-        # return None
-
-
-# class SamplerForXLNet(SamplerSingleStack):
-    # """ Sampler for the XLNet model.
-
-    # The XLNet model requires to add a dummy token to the input, compute an
-    # attention mask and a target mapping from the input before the forward pass.
-    # """
-
-    # def __init__(self, model, config, device):
-        # super(SamplerForXLNet, self).__init__(model, config, device)
-
-    # def forward_pass(self, input_ids):
-        # input_ids = self._add_dummy_token(input_ids)
-        # attention_mask = self._create_attention_mask(input_ids)
-        # target_mapping = self._create_target_mapping(input_ids)
-        # return self.model(
-            # input_ids, perm_mask=attention_mask, target_mapping=target_mapping
-        # )
-
-    # def _add_dummy_token(self, sequence):
-        # dummy = torch.zeros((sequence.shape[0], 1), dtype=torch.long, device=self.device)
-        # return torch.cat((sequence, dummy), dim=1)
-
-    # def _create_attention_mask(self, sequence):
-        # mask = torch.zeros(
-            # (sequence.shape[0], sequence.shape[1], sequence.shape[1]),
-            # dtype=torch.float,
-            # device=self.device,
-        # )
-        # mask[:, :, -1] = 1.0  # Previous tokens don't see last token
-        # return mask
-
-    # def _create_target_mapping(self, sequence):
-        # target_mapping = torch.zeros(
-            # (sequence.shape[0], 1, sequence.shape[1]), dtype=torch.float, device=self.device
-        # )
-        # target_mapping[0, 0, -1] = 1.0  # predict last token
-        # return target_mapping
