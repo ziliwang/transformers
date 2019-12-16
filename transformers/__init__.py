@@ -27,7 +27,7 @@ from .data import (is_sklearn_available,
                    glue_output_modes, glue_convert_examples_to_features,
                    glue_processors, glue_tasks_num_labels,
                    xnli_output_modes, xnli_processors, xnli_tasks_num_labels,
-                   squad_convert_examples_to_features, SquadFeatures, 
+                   squad_convert_examples_to_features, SquadFeatures,
                    SquadExample, SquadV1Processor, SquadV2Processor)
 
 if is_sklearn_available():
@@ -75,7 +75,7 @@ if is_torch_available():
     from .modeling_bert import (BertPreTrainedModel, BertModel, BertForPreTraining,
                                 BertForMaskedLM, BertForNextSentencePrediction,
                                 BertForSequenceClassification, BertForMultipleChoice,
-                                BertForTokenClassification, BertForQuestionAnswering,
+                                BertForTokenClassification, BertForQuestionAnswering, BertForQuestionAnsweringPlus,
                                 load_tf_weights_in_bert, BERT_PRETRAINED_MODEL_ARCHIVE_MAP)
     from .modeling_openai import (OpenAIGPTPreTrainedModel, OpenAIGPTModel,
                                   OpenAIGPTLMHeadModel, OpenAIGPTDoubleHeadsModel,
